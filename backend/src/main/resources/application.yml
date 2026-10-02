@@ -1,0 +1,49 @@
+spring:
+  application:
+    name: hospital-queue-system
+  profiles:
+    active: dev
+
+  datasource:
+    url: jdbc:h2:mem:hospitaldb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
+    driverClassName: org.h2.Driver
+    username: sa
+    password: 
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+      settings:
+        web-allow-others: true
+
+  sql:
+    init:
+      mode: always
+
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: update
+    defer-datasource-initialization: true
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+app:
+  jwt:
+    secret: 9a2f8c4e1b7d5a3f6e8c0b2d4f6a8c1e3b5d7f9a2c4e6b8d0a2f4c6e8b0d2f4a
+    expiration-ms: 86400000 # 24 hours
+
+  queue:
+    starvation:
+      weight-per-minute: 2.5
+    estimation:
+      default-consultation-mins: 15
+
+logging:
+  level:
+    root: INFO
+    com.hospital.queue: DEBUG
+    org.springframework.security: INFO

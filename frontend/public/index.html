@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Intelligent Hospital Queue & Appointment Optimization System</title>
+  
+  <!-- Fonts & Styling -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --bg-dark: #0f172a;
+      --bg-card: rgba(30, 41, 59, 0.75);
+      --border-color: rgba(255, 255, 255, 0.1);
+      --primary-emerald: #10b981;
+      --accent-cyan: #06b6d4;
+      --amber-warning: #f59e0b;
+      --crimson-alert: #ef4444;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --font-sans: 'Inter', system-ui, sans-serif;
+      --font-display: 'Outfit', sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background-color: var(--bg-dark); color: var(--text-main); font-family: var(--font-sans); min-height: 100vh; }
+    .glass-card { background: var(--bg-card); backdrop-filter: blur(12px); border: 1px solid var(--border-color); border-radius: 16px; padding: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
+    .gradient-text { background: linear-gradient(135deg, #34d399 0%, #06b6d4 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 20px; font-weight: 600; border-radius: 10px; border: none; cursor: pointer; transition: all 0.2s ease; }
+    .btn-primary { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #fff; }
+    .btn-secondary { background: rgba(255, 255, 255, 0.08); color: var(--text-main); border: 1px solid var(--border-color); }
+    .btn-danger { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: #fff; }
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
+    .badge-emergency { background: rgba(239,68,68,0.2); color: #fca5a5; border: 1px solid rgba(239,68,68,0.4); }
+    .badge-urgent { background: rgba(245,158,11,0.2); color: #fde047; border: 1px solid rgba(245,158,11,0.4); }
+    .badge-regular { background: rgba(16,185,129,0.2); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.4); }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; }
+    .form-control { width: 100%; padding: 12px; background: rgba(15,23,42,0.8); border: 1px solid var(--border-color); border-radius: 10px; color: #fff; font-size: 0.95rem; }
+    .custom-table { width: 100%; border-collapse: separate; border-spacing: 0 8px; margin-top: 12px; }
+    .custom-table th { padding: 12px; color: var(--text-muted); font-size: 0.85rem; text-align: left; }
+    .custom-table td { padding: 14px; background: rgba(15,23,42,0.6); border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    @media(max-width: 900px) { .grid-2, .grid-4 { grid-template-columns: 1fr; } }
+  </style>
+
+  <!-- React & Babel Standalone CDNs -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // Axios API Config
+    const api = axios.create({ baseURL: '/api' });
+    api.interceptors.request.use((config) => {
+      const token = localStorage.getItem('jwtToken');
+      if (token) config.headers.Authorization = `Bearer ${token}`;
+      return config;
+    });
+
+    // App Main Component
+    function App() {
+      const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user') || 'null'));
+      const [activeTab, setActiveTab] = useState('dashboard');
+      const [departments, setDepartments] = useState([]);
+      const [msg, setMsg] = useState('');
+
+      useEffect(() => {
+        api.get('/departments').then(res => setDepartments(res.data)).catch(console.error);
+      }, []);
+
+      const login = (data) => {
+        setUser(data);
+        localStorage.setItem('jwtToken', data.token);
+        localStorage.setItem('user', JSON.stringify(data));
+      };
+
+      const logout = () => {
+        setUser(null);
+        localStorage.removeItem('jwtToken');
+        localStorage.removeItem('user');
+      };
+
+      if (!user) {
+        return <LoginForm onLogin={login} />;
+      }
+
+      return (
+        <div>
+          {/* Header */}
+          <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 32px', background: 'rgba(15,23,42,0.9)', borderBottom: '1px solid var(--border-color)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'linear-gradient(135deg, #10b981, #06b6d4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800' }}>HQ</div>
+              <div>
+                <h2 className="gradient-text" style={{ fontSize: '1.2rem' }}>MediFlow Queue Engine</h2>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Intelligent Scheduling & Queue Optimization</div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontWeight: 600 }}>{user.fullName}</div>
+                <span className="badge badge-regular">{user.role}</span>
+              </div>
+              <button className="btn btn-secondary" onClick={logout}>Logout</button>
+            </div>
+          </header>
+
+          {/* Main Body */}
+          <div style={{ display: 'flex', minHeight: 'calc(100vh - 70px)' }}>
+            {/* Sidebar */}
+            <aside style={{ width: '220px', background: 'rgba(30,41,59,0.4)', borderRight: '1px solid var(--border-color)', padding: '24px 16px' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '12px' }}>MENU</div>
+              <button className={`btn ${activeTab === 'dashboard' ? 'btn-primary' : 'btn-secondary'}`} style={{ width: '100%', marginBottom: '8px', justifyContent: 'flex-start' }} onClick={() => setActiveTab('dashboard')}>
+                🏥 Dashboard
+              </button>
+              {(user.role === 'PATIENT' || user.role === 'RECEPTIONIST') && (
+                <button className={`btn ${activeTab === 'book' ? 'btn-primary' : 'btn-secondary'}`} style={{ width: '100%', marginBottom: '8px', justifyContent: 'flex-start' }} onClick={() => setActiveTab('book')}>
+                  📅 Book Appt
+                </button>
+              )}
+            </aside>
+
+            {/* Content Area */}
+            <main style={{ flex: 1, padding: '32px' }}>
+              {activeTab === 'dashboard' && <DashboardView user={user} departments={departments} />}
+              {activeTab === 'book' && <BookApptView user={user} departments={departments} onComplete={() => setActiveTab('dashboard')} />}
+            </main>
+          </div>
+        </div>
+      );
+    }
+
+    // Login Component with Autofill Presets
+    function LoginForm({ onLogin }) {
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [error, setError] = useState('');
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        try {
+          const res = await api.post('/auth/login', { email, password });
+          onLogin(res.data);
+        } catch (err) {
+          setError(err.response?.data?.message || 'Login failed');
+        }
+      };
+
+      return (
+        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="glass-card" style={{ width: '100%', maxWidth: '440px' }}>
+            <h2 className="gradient-text" style={{ textAlign: 'center', marginBottom: '8px' }}>Hospital Queue Engine</h2>
+            <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '24px' }}>Sign in to access your portal</p>
+            {error && <div style={{ color: '#fca5a5', background: 'rgba(239,68,68,0.2)', padding: '10px', borderRadius: '8px', marginBottom: '16px' }}>{error}</div>}
+            
+            <form onSubmit={handleSubmit}>
+              <div className="form-group">
+                <label>Email Address</label>
+                <input className="form-control" value={email} onChange={e => setEmail(e.target.value)} required />
+              </div>
+              <div className="form-group">
+                <label>Password</label>
+                <input type="password" className="form-control" value={password} onChange={e => setPassword(e.target.value)} required />
+              </div>
+              <button className="btn btn-primary" style={{ width: '100%' }}>Sign In</button>
+            </form>
+
+            <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '8px' }}>QUICK DEMO LOGINS</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <button className="btn btn-secondary" onClick={() => { setEmail('john.doe@patient.com'); setPassword('password123'); }}>👤 Patient</button>
+                <button className="btn btn-secondary" onClick={() => { setEmail('sarah.jenkins@hospital.com'); setPassword('password123'); }}>🩺 Doctor</button>
+                <button className="btn btn-secondary" onClick={() => { setEmail('receptionist@hospital.com'); setPassword('password123'); }}>📋 Receptionist</button>
+                <button className="btn btn-secondary" onClick={() => { setEmail('admin@hospital.com'); setPassword('password123'); }}>⚙️ Admin</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Role Dashboard Router
+    function DashboardView({ user, departments }) {
+      if (user.role === 'PATIENT') return <PatientView user={user} departments={departments} />;
+      if (user.role === 'DOCTOR') return <DoctorView user={user} />;
+      if (user.role === 'RECEPTIONIST') return <ReceptionistView departments={departments} />;
+      if (user.role === 'ADMIN') return <AdminView />;
+      return <div>Role view not found</div>;
+    }
+
+    // Patient Dashboard View
+    function PatientView({ user, departments }) {
+      const [dash, setDash] = useState(null);
+      const [deptId, setDeptId] = useState('1');
+      const [severity, setSeverity] = useState('WALK_IN');
+      const [msg, setMsg] = useState('');
+
+      const load = () => {
+        api.get(`/patients/me/${user.id}`).then(p => {
+          api.get(`/patients/dashboard/${p.data.id}`).then(res => setDash(res.data));
+        });
+      };
+
+      useEffect(() => { load(); const i = setInterval(load, 4000); return () => clearInterval(i); }, []);
+
+      const joinQueue = async (e) => {
+        e.preventDefault();
+        try {
+          const p = await api.get(`/patients/me/${user.id}`);
+          const res = await api.post('/queues/join', { patientId: p.data.id, departmentId: parseInt(deptId), severityLevel: severity });
+          setMsg(`Ticket Issued: ${res.data.ticketNumber}`);
+          load();
+        } catch (err) { setMsg(err.response?.data?.message || 'Failed to join queue'); }
+      };
+
+      const ticket = dash?.currentQueuePosition;
+
+      return (
+        <div>
+          <h2 style={{ marginBottom: '16px' }}>Patient Portal</h2>
+          {msg && <div style={{ color: '#6ee7b7', background: 'rgba(16,185,129,0.2)', padding: '12px', borderRadius: '10px', marginBottom: '16px' }}>{msg}</div>}
+
+          {ticket ? (
+            <div className="glass-card" style={{ border: '1px solid var(--primary-emerald)', marginBottom: '24px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--primary-emerald)' }}>ACTIVE TICKET</div>
+                  <h1 style={{ fontSize: '2.5rem', color: 'var(--accent-cyan)', fontFamily: 'monospace' }}>{ticket.ticketNumber}</h1>
+                  <div>Dept: <strong>{ticket.departmentName}</strong> | Doctor: <strong>{ticket.doctorName}</strong></div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '1.5rem', color: '#34d399', fontWeight: '800' }}>#{ticket.position} in line</div>
+                  <div style={{ color: '#f59e0b', fontWeight: '700' }}>~{ticket.estimatedWaitMinutes} mins wait</div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="glass-card" style={{ marginBottom: '24px' }}>
+              <h3>Get Live Queue Ticket</h3>
+              <form onSubmit={joinQueue} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '12px', marginTop: '12px' }}>
+                <select className="form-control" value={deptId} onChange={e => setDeptId(e.target.value)}>
+                  {departments.map(d => <option key={d.id} value={d.id}>{d.name} ({d.code})</option>)}
+                </select>
+                <select className="form-control" value={severity} onChange={e => setSeverity(e.target.value)}>
+                  <option value="WALK_IN">Walk-in</option>
+                  <option value="URGENT">Urgent Care</option>
+                  <option value="EMERGENCY">Emergency</option>
+                </select>
+                <button className="btn btn-primary">Join Queue</button>
+              </form>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Doctor Console View
+    function DoctorView({ user }) {
+      const [dash, setDash] = useState(null);
+      const [activeCall, setActiveCall] = useState(null);
+      const [diagnosis, setDiagnosis] = useState('');
+      const [prescription, setPrescription] = useState('');
+      const [msg, setMsg] = useState('');
+
+      const load = async () => {
+        const doc = await api.get(`/doctors/me/${user.id}`);
+        const res = await api.get(`/doctors/dashboard/${doc.data.id}`);
+        setDash(res.data);
+      };
+
+      useEffect(() => { load(); const i = setInterval(load, 4000); return () => clearInterval(i); }, []);
+
+      const callNext = async () => {
+        try {
+          const doc = await api.get(`/doctors/me/${user.id}`);
+          const res = await api.post(`/queues/next?departmentId=${doc.data.department.id}&doctorId=${doc.data.id}`);
+          if (res.data) {
+            setActiveCall(res.data);
+            setMsg(`Called ticket ${res.data.ticketNumber}`);
+          } else {
+            setMsg('No waiting patients in queue');
+          }
+          load();
+        } catch (err) { setMsg('Error calling next patient'); }
+      };
+
+      const completeConsultation = async (e) => {
+        e.preventDefault();
+        try {
+          await api.post('/consultations/complete', { consultationId: activeCall.id, diagnosis, prescription });
+          setMsg('Consultation completed!');
+          setActiveCall(null);
+          setDiagnosis(''); setPrescription('');
+          load();
+        } catch (err) { setMsg('Failed to complete consultation'); }
+      };
+
+      return (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h2>Doctor Console</h2>
+            <button className="btn btn-primary" onClick={callNext}>⚡ Call Next Patient (Max-Heap Top)</button>
+          </div>
+
+          {msg && <div style={{ color: '#67e8f9', background: 'rgba(6,182,212,0.2)', padding: '10px', borderRadius: '8px', marginBottom: '16px' }}>{msg}</div>}
+
+          {activeCall && (
+            <div className="glass-card" style={{ border: '2px solid var(--primary-emerald)', marginBottom: '24px' }}>
+              <h3>Current Consultation: <span style={{ color: 'var(--accent-cyan)' }}>{activeCall.ticketNumber}</span> ({activeCall.patientName})</h3>
+              <form onSubmit={completeConsultation} style={{ marginTop: '12px' }}>
+                <div className="form-group"><label>Diagnosis</label><textarea className="form-control" rows="2" value={diagnosis} onChange={e => setDiagnosis(e.target.value)} required /></div>
+                <div className="form-group"><label>Prescription</label><textarea className="form-control" rows="2" value={prescription} onChange={e => setPrescription(e.target.value)} required /></div>
+                <button className="btn btn-primary" style={{ width: '100%' }}>✅ Discharge Patient</button>
+              </form>
+            </div>
+          )}
+
+          <QueueTable queue={dash?.waitingQueue} />
+        </div>
+      );
+    }
+
+    // Receptionist Desk View
+    function ReceptionistView({ departments }) {
+      const [deptId, setDeptId] = useState('1');
+      const [queue, setQueue] = useState([]);
+      const [severity, setSeverity] = useState('WALK_IN');
+      const [msg, setMsg] = useState('');
+
+      const load = () => {
+        if (deptId) api.get(`/queues/department/${deptId}`).then(res => setQueue(res.data));
+      };
+
+      useEffect(() => { load(); const i = setInterval(load, 4000); return () => clearInterval(i); }, [deptId]);
+
+      const handleWalkIn = async (e) => {
+        e.preventDefault();
+        try {
+          const res = await api.post('/queues/join', { patientId: 1, departmentId: parseInt(deptId), severityLevel: severity });
+          setMsg(`Walk-in Ticket Issued: ${res.data.ticketNumber} (${Math.round(res.data.calculatedPriority)} pts)`);
+          load();
+        } catch (err) { setMsg('Check-in error'); }
+      };
+
+      return (
+        <div>
+          <h2>Receptionist Desk</h2>
+          {msg && <div style={{ color: '#6ee7b7', background: 'rgba(16,185,129,0.2)', padding: '10px', borderRadius: '8px', marginBottom: '16px' }}>{msg}</div>}
+
+          <div className="glass-card" style={{ marginBottom: '24px' }}>
+            <h3>Issue Walk-In Ticket / Priority Triage</h3>
+            <form onSubmit={handleWalkIn} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '12px', marginTop: '12px' }}>
+              <select className="form-control" value={deptId} onChange={e => setDeptId(e.target.value)}>
+                {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+              <select className="form-control" value={severity} onChange={e => setSeverity(e.target.value)}>
+                <option value="WALK_IN">Walk-in (50 pts)</option>
+                <option value="URGENT">Urgent (500 pts)</option>
+                <option value="EMERGENCY">Emergency (1000 pts)</option>
+              </select>
+              <button className="btn btn-primary">Issue Ticket</button>
+            </form>
+          </div>
+
+          <QueueTable queue={queue} />
+        </div>
+      );
+    }
+
+    // Admin View
+    function AdminView() {
+      const [stats, setStats] = useState(null);
+      useEffect(() => {
+        api.get('/admin/analytics').then(res => setStats(res.data));
+      }, []);
+
+      return (
+        <div>
+          <h2>Admin Analytics & Operational Monitoring</h2>
+          <div className="grid-4" style={{ margin: '20px 0' }}>
+            <div className="glass-card"><div style={{ color: 'var(--text-muted)' }}>Total Queue Traffic</div><h1 style={{ color: '#34d399' }}>{stats?.totalPatientsToday || 0}</h1></div>
+            <div className="glass-card"><div style={{ color: 'var(--text-muted)' }}>Waiting Patients</div><h1 style={{ color: '#f59e0b' }}>{stats?.waitingPatients || 0}</h1></div>
+            <div className="glass-card"><div style={{ color: 'var(--text-muted)' }}>Available Doctors</div><h1 style={{ color: '#06b6d4' }}>{stats?.activeDoctors || 0}</h1></div>
+            <div className="glass-card"><div style={{ color: 'var(--text-muted)' }}>No-Show Rate</div><h1 style={{ color: '#c084fc' }}>{stats?.noShowRatePercentage || 0}%</h1></div>
+          </div>
+        </div>
+      );
+    }
+
+    // Book Appointment View
+    function BookApptView({ user, departments, onComplete }) {
+      const [deptId, setDeptId] = useState('1');
+      const [doctors, setDoctors] = useState([]);
+      const [docId, setDocId] = useState('');
+      const [msg, setMsg] = useState('');
+
+      useEffect(() => {
+        if (deptId) api.get(`/doctors/department/${deptId}`).then(res => { setDoctors(res.data); if (res.data.length > 0) setDocId(res.data[0].id); });
+      }, [deptId]);
+
+      const handleBook = async (e) => {
+        e.preventDefault();
+        try {
+          const p = await api.get(`/patients/me/${user.id}`);
+          const res = await api.post('/appointments', {
+            patientId: p.data.id, doctorId: parseInt(docId), departmentId: parseInt(deptId),
+            appointmentDate: new Date().toISOString().split('T')[0], timeSlot: '10:00 AM',
+            appointmentType: 'ROUTINE', reason: 'General checkup'
+          });
+          setMsg('Appointment booked successfully!');
+          setTimeout(onComplete, 1200);
+        } catch (err) { setMsg(err.response?.data?.message || 'Slot conflict!'); }
+      };
+
+      return (
+        <div className="glass-card" style={{ maxWidth: '500px', margin: '0 auto' }}>
+          <h3>Schedule Appointment</h3>
+          {msg && <div style={{ color: '#6ee7b7', margin: '12px 0' }}>{msg}</div>}
+          <form onSubmit={handleBook} style={{ marginTop: '12px' }}>
+            <div className="form-group">
+              <label>Department</label>
+              <select className="form-control" value={deptId} onChange={e => setDeptId(e.target.value)}>
+                {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Doctor</label>
+              <select className="form-control" value={docId} onChange={e => setDocId(e.target.value)}>
+                {doctors.map(d => <option key={d.id} value={d.id}>{d.user?.fullName} ({d.specialization})</option>)}
+              </select>
+            </div>
+            <button className="btn btn-primary" style={{ width: '100%' }}>Confirm Booking</button>
+          </form>
+        </div>
+      );
+    }
+
+    // Shared Priority Queue Table
+    function QueueTable({ queue }) {
+      if (!queue || queue.length === 0) return <div className="glass-card">Queue Empty</div>;
+      return (
+        <div className="glass-card">
+          <h3>Priority Queue (Live Max-Heap Rank)</h3>
+          <table className="custom-table">
+            <thead>
+              <tr><th>Rank</th><th>Ticket</th><th>Patient</th><th>Age</th><th>Severity</th><th>Priority Score</th><th>Est Wait</th></tr>
+            </thead>
+            <tbody>
+              {queue.map((item, idx) => (
+                <tr key={item.id} style={{ background: idx === 0 ? 'rgba(16,185,129,0.12)' : 'transparent' }}>
+                  <td style={{ fontWeight: 800 }}>#{idx + 1}</td>
+                  <td style={{ color: 'var(--accent-cyan)', fontFamily: 'monospace', fontWeight: '700' }}>{item.ticketNumber}</td>
+                  <td>{item.patientName}</td>
+                  <td>{item.patientAge} yrs</td>
+                  <td><span className={`badge ${item.severityLevel === 'EMERGENCY' ? 'badge-emergency' : 'badge-regular'}`}>{item.severityLevel}</span></td>
+                  <td style={{ color: '#f59e0b', fontWeight: '700' }}>{Math.round(item.calculatedPriority)} pts</td>
+                  <td>{item.estimatedWaitMinutes} mins</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
